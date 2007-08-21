@@ -1,20 +1,20 @@
 /*
 
-    garmini - download track log from Garmin GPSs
-    Copyright (C) 2007  Tom Payne
+   garmini - download track log from Garmin GPSs
+   Copyright (C) 2007  Tom Payne
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 */
 
@@ -71,19 +71,19 @@ enum {
 /* L001 */
 
 enum {
-   Pid_Command_Data = 10,
-   Pid_Xfer_Cmplt   = 12,
-   Pid_Records      = 27,
-   Pid_Trk_Data     = 34,
-   Pid_Trk_Hdr      = 99
+	Pid_Command_Data = 10,
+	Pid_Xfer_Cmplt   = 12,
+	Pid_Records      = 27,
+	Pid_Trk_Data     = 34,
+	Pid_Trk_Hdr      = 99
 };
 
 /* A010 */
 
 enum {
-   Cmnd_Abort_Transfer = 0,
-   Cmnd_Transfer_Trk   = 6,
-   Cmnd_Turn_Off_Pwr   = 8
+	Cmnd_Abort_Transfer = 0,
+	Cmnd_Transfer_Trk   = 6,
+	Cmnd_Turn_Off_Pwr   = 8
 };
 
 typedef struct {
@@ -208,21 +208,21 @@ int minimum_duration = 0; /* FIXME */
 
 void error(const char *message, ...)
 {
-    fprintf(stderr, "%s: ", program_name);
-    va_list ap;
-    va_start(ap, message);
-    vfprintf(stderr, message, ap);
-    va_end(ap);
-    fprintf(stderr, "\n");
-    exit(EXIT_FAILURE);
+	fprintf(stderr, "%s: ", program_name);
+	va_list ap;
+	va_start(ap, message);
+	vfprintf(stderr, message, ap);
+	va_end(ap);
+	fprintf(stderr, "\n");
+	exit(EXIT_FAILURE);
 }
 
 void die(const char *file, int line, const char *function, const char *message, int _errno)
 {
-    if (_errno)
-        error("%s:%d: %s: %s: %s", file, line, function, message, strerror(_errno));
-    else
-        error("%s:%d: %s: %s", file, line, function, message);
+	if (_errno)
+		error("%s:%d: %s: %s: %s", file, line, function, message, strerror(_errno));
+	else
+		error("%s:%d: %s: %s", file, line, function, message);
 }
 
 void *alloc(int size)
@@ -818,38 +818,38 @@ void garmini_download(garmin_t *garmin)
 static void usage(void)
 {
 	printf("%s - download track log from Garmin GPSs\n"
-		   "Usage: %s [options] [command]\n"
-		   "Options:\n"
-		   "\t-h, --help\t\t\tshow some help\n"
-		   "\t-d, --device=DEVICE\t\tselect device (default is /dev/ttyS0)\n"
-		   "\t-D, --directory=DIR\t\tdownload tracklogs to DIR\n"
-		   "\t-l, --log=FILENAME\t\tlog communication to FILENAME\n"
-		   "\t-o, --power-off\t\t\tturn GPS off\n"
-		   "IGC options:\n"
-		   "\t-m, --manufacturer=STRING\toverride manufacturer\n"
-		   "\t-n, --serial-number=NUMBER\toverride serial number\n"
-		   "\t-p, --pilot=PILOT\t\tset pilot\n"
-		   "\t-t, --glider-type=TYPE\t\tset glider type\n"
-		   "\t-g, --glider-id=ID\t\tset glider id\n"
-		   "\t-c, --competition-class=CLASS\tset competition class\n"
-		   "\t-i, --competition-id=ID\t\tset competition id\n"
-		   "\t-s, --sensors\t\t\tFIXME\n"
-		   "Commands:\n"
-		   "\tid\t\tidentify GPS\n"
-		   "\tdo, download\tdownload tracklogs\n"
-		   "\tig, igc\t\twrite entire track log to stdout\n"
-		   "Supported GPSs:\n"
-		   "\tGPS 12, GPS 12 XL, GPS 12 XL Chinese, GPS 12 XL Japanese, GPS 120,\n"
-		   "\tGPS 120 Chinese, GPS 120 XL, GPS 125 Sounder, GPS 126, GPS 126 Chinese,\n"
-		   "\tGPS 128, GPS 128 Chinese, GPS 38, GPS 38 Chinese, GPS 38 Japanese,\n"
-		   "\tGPS 40, GPS 40 Chinese, GPS 40 Japanese, GPS 45, GPS 45 Chinese,\n"
-		   "\tGPS 45 XL, GPS 48, GPS 65, GPS 75, GPS 85, GPS 89, GPS 90, GPS 92,\n"
-		   "\tGPS 95, GPS 95 AVD, GPS 95 XL, GPS II, GPS II Plus, GPS III,\n"
-		   "\tGPS III Pilot, GPSCOM 170, GPSCOM 190, GPSMAP 130, GPSMAP 130 Chinese,\n"
-		   "\tGPSMAP 135 Sounder, GPSMAP 175, GPSMAP 195, GPSMAP 205, GPSMAP 210,\n"
-		   "\tGPSMAP 215, GPSMAP 220, GPSMAP 225, GPSMAP 230, GPSMAP 230 Chinese,\n"
-		   "\tGPSMAP 235 Sounder and all modern Garmin GPSs\n",
-		   program_name, program_name);
+			"Usage: %s [options] [command]\n"
+			"Options:\n"
+			"\t-h, --help\t\t\tshow some help\n"
+			"\t-d, --device=DEVICE\t\tselect device (default is /dev/ttyS0)\n"
+			"\t-D, --directory=DIR\t\tdownload tracklogs to DIR\n"
+			"\t-l, --log=FILENAME\t\tlog communication to FILENAME\n"
+			"\t-o, --power-off\t\t\tturn GPS off\n"
+			"IGC options:\n"
+			"\t-m, --manufacturer=STRING\toverride manufacturer\n"
+			"\t-n, --serial-number=NUMBER\toverride serial number\n"
+			"\t-p, --pilot=PILOT\t\tset pilot\n"
+			"\t-t, --glider-type=TYPE\t\tset glider type\n"
+			"\t-g, --glider-id=ID\t\tset glider id\n"
+			"\t-c, --competition-class=CLASS\tset competition class\n"
+			"\t-i, --competition-id=ID\t\tset competition id\n"
+			"\t-s, --sensors\t\t\tFIXME\n"
+			"Commands:\n"
+			"\tid\t\tidentify GPS\n"
+			"\tdo, download\tdownload tracklogs\n"
+			"\tig, igc\t\twrite entire track log to stdout\n"
+			"Supported GPSs:\n"
+			"\tGPS 12, GPS 12 XL, GPS 12 XL Chinese, GPS 12 XL Japanese, GPS 120,\n"
+			"\tGPS 120 Chinese, GPS 120 XL, GPS 125 Sounder, GPS 126, GPS 126 Chinese,\n"
+			"\tGPS 128, GPS 128 Chinese, GPS 38, GPS 38 Chinese, GPS 38 Japanese,\n"
+			"\tGPS 40, GPS 40 Chinese, GPS 40 Japanese, GPS 45, GPS 45 Chinese,\n"
+			"\tGPS 45 XL, GPS 48, GPS 65, GPS 75, GPS 85, GPS 89, GPS 90, GPS 92,\n"
+			"\tGPS 95, GPS 95 AVD, GPS 95 XL, GPS II, GPS II Plus, GPS III,\n"
+			"\tGPS III Pilot, GPSCOM 170, GPSCOM 190, GPSMAP 130, GPSMAP 130 Chinese,\n"
+			"\tGPSMAP 135 Sounder, GPSMAP 175, GPSMAP 195, GPSMAP 205, GPSMAP 210,\n"
+			"\tGPSMAP 215, GPSMAP 220, GPSMAP 225, GPSMAP 230, GPSMAP 230 Chinese,\n"
+			"\tGPSMAP 235 Sounder and all modern Garmin GPSs\n",
+		program_name, program_name);
 }
 
 int main(int argc, char *argv[])
