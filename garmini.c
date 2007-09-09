@@ -21,7 +21,6 @@
 /* TODO factor out trk_data test into transfer_trk */
 /* TODO splitting by segment */
 /* TODO splitting by flight acceptance */
-/* TODO progress meter */
 /* TODO tidy up help */
 /* TODO factor out garmin interface code */
 
@@ -38,6 +37,7 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/times.h>
 #include <sys/types.h>
 #include <termios.h>
 #include <time.h>
@@ -189,6 +189,7 @@ typedef struct {
 	char validity;
 } garmin_trk_point_t;
 
+int _sc_clk_tck = -1;
 const char *program_name = 0;
 const char *device = 0;
 FILE *logfile = 0;
@@ -424,7 +425,7 @@ garmin_t *garmin_new(const char *device, FILE *logfile)
 	struct termios termios;
 	memset(&termios, 0, sizeof termios);
 	termios.c_iflag = IGNPAR;
-	termios.c_cflag = B9600 | CLOCAL | CREAD | CS8;
+	termios.c_cflag = CLOCAL | CREAD | CS8;
 	cfsetispeed(&termios, B9600);
 	cfsetospeed(&termios, B9600);
 	if (tcsetattr(garmin->fd, TCSANOW, &termios) == -1)
@@ -545,7 +546,7 @@ void garmin_delete(garmin_t *garmin)
 	}
 }
 
-void garmin_each(garmin_t *garmin, int command, void (*callback)(void *, const garmin_packet_t *), void *data)
+void garmin_each(garmin_t *garmin, int command, void (*callback)(void *, int, int, const garmin_packet_t *), void *data)
 {
 	garmin_packet_t packet;
 	packet.id = Pid_Command_Data;
@@ -557,7 +558,7 @@ void garmin_each(garmin_t *garmin, int command, void (*callback)(void *, const g
 	int i;
 	for (i = 0; i < records; ++i) {
 		garmin_read_packet_ack(garmin, &packet);
-		callback(data, &packet);
+		callback(data, i, records, &packet);
 	}
 	garmin_expect_packet_ack(garmin, &packet, Pid_Xfer_Cmplt);
 }
@@ -573,13 +574,31 @@ void garmin_turn_off_pwr(garmin_t *garmin)
 
 typedef struct {
 	garmin_t *garmin;
+	clock_t clock;
+	int remaining_sec;
+	int percentage;
 	void (*callback)(void *, const garmin_trk_point_t *);
 	void *data;
 } garmin_transfer_trk_data_t;
 
-static void garmin_transfer_trk_callback(void *data, const garmin_packet_t *packet)
+static void garmin_transfer_trk_callback(void *data, int i, int records, const garmin_packet_t *packet)
 {
 	garmin_transfer_trk_data_t *transfer_trk_data = data;
+	if (!quiet) {
+		struct tms tms;
+		clock_t clock = times(&tms);
+		if (clock == -1)
+			DIE("times", errno);
+		int remaining_sec = (records - i - 1) * (clock - transfer_trk_data->clock) / (_sc_clk_tck * (i + 1));
+		if (remaining_sec < 1)
+			remaining_sec = 1;
+		int percentage = 100 * i / records;
+		if (remaining_sec != transfer_trk_data->remaining_sec || percentage != transfer_trk_data->percentage) {
+			fprintf(stderr, "%3d%% (ETA %2d:%02d)\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", 100 * i / records, remaining_sec / 60, remaining_sec % 60);
+			transfer_trk_data->remaining_sec = remaining_sec;
+			transfer_trk_data->percentage = percentage;
+		}
+	}
 	switch (packet->id) {
 		case Pid_Trk_Data:
 			{
@@ -645,12 +664,28 @@ static void garmin_transfer_trk_callback(void *data, const garmin_packet_t *pack
 
 void garmin_transfer_trk(garmin_t *garmin, void (*callback)(void *, const garmin_trk_point_t *), void *data)
 {
+	if (_sc_clk_tck == -1) {
+		_sc_clk_tck = sysconf(_SC_CLK_TCK);
+		if (_sc_clk_tck == -1)
+			DIE("sysconf", errno);
+	}
 	garmin_transfer_trk_data_t transfer_trk_data;
 	memset(&transfer_trk_data, 0, sizeof transfer_trk_data);
 	transfer_trk_data.garmin = garmin;
+	if (!quiet) {
+		struct tms tms;
+		transfer_trk_data.clock = times(&tms);
+		if (transfer_trk_data.clock == -1)
+			DIE("times", errno);
+		transfer_trk_data.remaining_sec = -1;
+		transfer_trk_data.percentage = -1;
+		fprintf(stderr, "Downloading track log: ");
+	}
 	transfer_trk_data.callback = callback;
 	transfer_trk_data.data = data;
 	garmin_each(garmin, Cmnd_Transfer_Trk, garmin_transfer_trk_callback, &transfer_trk_data);
+	if (!quiet)
+		fprintf(stderr, "100%%            \n");
 }
 
 typedef struct {
@@ -857,7 +892,7 @@ int main(int argc, char *argv[])
 	program_name = strrchr(argv[0], '/');
 	program_name = program_name ? program_name + 1 : argv[0];
 
-	device = getenv("GINI_DEVICE");
+	device = getenv("GARMINI_DEVICE");
 	if (!device)
 		device = "/dev/ttyS0";
 
