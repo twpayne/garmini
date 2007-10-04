@@ -18,10 +18,8 @@
 
 */
 
-/* TODO factor out trk_data test into transfer_trk */
 /* TODO splitting by segment */
 /* TODO splitting by flight acceptance */
-/* TODO tidy up help */
 /* TODO factor out garmin interface code */
 
 #include <ctype.h>
@@ -46,6 +44,8 @@
 #if __BYTE_ORDER != __LITTLE_ENDIAN
 #error Only little-endian machines are currently supported
 #endif
+
+#define GARMINI_TIMEOUT (10 * 1000)
 
 #define DIE(syscall, _errno) die(__FILE__, __LINE__, __FUNCTION__, (syscall), (_errno))
 
@@ -76,6 +76,15 @@ enum {
 	Pid_Records      = 27,
 	Pid_Trk_Data     = 34,
 	Pid_Trk_Hdr      = 99
+};
+
+/* A001 */
+
+enum {
+	Tag_Phys_Prot_Id = 'P',
+	Tag_Link_Prot_Id = 'L',
+	Tag_Appl_Prot_Id = 'A',
+	Tag_Data_Prot_Id = 'D'
 };
 
 /* A010 */
@@ -173,10 +182,8 @@ typedef struct {
 	int fd;
 	FILE *logfile;
 	Product_Data_Type *product_data;
-	int A010;
-	int L001;
-	Protocol_Data_Type trk_data;
-	Protocol_Data_Type trk_hdr;
+	int nprotocols;
+	Protocol_Data_Type *protocols;
 	unsigned char *next;
 	unsigned char *end;
 	unsigned char buf[1024];
@@ -197,7 +204,7 @@ const char *directory = 0;
 int power_off = 0;
 const char *manufacturer = "XXX";
 int serial_number = 0;
-int sensors = 0;
+int barometric_altimeter = -1;
 const char *glider_id = 0;
 const char *glider_type = 0;
 const char *pilot = 0;
@@ -235,6 +242,45 @@ void *alloc(int size)
 	return p;
 }
 
+static void print_string(FILE *file, const char *s, int len)
+{
+	const char *end = s + (len < 0 ? (int) strlen(s) : len);
+	const char *p;
+	for (p = s; p < end; ++p) {
+		const char *format;
+		switch (*p) {
+			case '\a':
+				format = "\\a";
+				break;
+			case '\b':
+				format = "\\b";
+				break;
+			case '\f':
+				format = "\\f";
+				break;
+			case '\n':
+				format = "\\n";
+				break;
+			case '\r':
+				format = "\\r";
+				break;
+			case '\t':
+				format = "\\t";
+				break;
+			case '\v':
+				format = "\\v";
+				break;
+			case '\"':
+				format = "\\\"";
+				break;
+			default:
+				format = isprint(*p) ? "%c" : "\\x%02x";
+				break;
+		}
+		fprintf(file, format, ((unsigned) *p) & 0xff);
+	}
+}
+
 static void garmin_read(garmin_t *garmin)
 {
 	fd_set readfds;
@@ -244,25 +290,25 @@ static void garmin_read(garmin_t *garmin)
 	do {
 		struct timeval timeout;
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 250 * 1000;
+		timeout.tv_usec = GARMINI_TIMEOUT;
 		rc = select(garmin->fd + 1, &readfds, 0, 0, &timeout);
 	} while (rc == -1 && errno == EINTR);
 	if (rc == -1)
 		DIE("select", errno);
-	else if (rc == 0)
-		error("%s: timeout waiting for data", garmin->device);
-	else if (!FD_ISSET(garmin->fd, &readfds))
-		DIE("select", 0);
-	int n;
-	do {
-		n = read(garmin->fd, garmin->buf, sizeof garmin->buf);
-	} while (n == -1 && errno == EINTR);
-	if (n == -1)
-		DIE("read", errno);
-	else if (n == 0)
-		DIE("read", 0);
-	garmin->next = garmin->buf;
-	garmin->end = garmin->buf + n;
+	if (FD_ISSET(garmin->fd, &readfds)) {
+		int n;
+		do {
+			n = read(garmin->fd, garmin->buf, sizeof garmin->buf);
+		} while (n == -1 && errno == EINTR);
+		if (n == -1)
+			DIE("read", errno);
+		else if (n == 0)
+			DIE("read", 0);
+		garmin->next = garmin->buf;
+		garmin->end = garmin->buf + n;
+	} else {
+		garmin->next = garmin->end = garmin->buf;
+	}
 }
 
 int garmin_select(garmin_t *garmin)
@@ -276,7 +322,7 @@ int garmin_select(garmin_t *garmin)
 	do {
 		struct timeval timeout;
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 250 * 1000;
+		timeout.tv_usec = GARMINI_TIMEOUT;
 		rc = select(garmin->fd + 1, &readfds, 0, 0, &timeout);
 	} while (rc == -1 && errno == EINTR);
 	return rc > 0 && FD_ISSET(garmin->fd, &readfds);
@@ -313,40 +359,52 @@ static void garmin_log_packet(garmin_t *garmin, const garmin_packet_t *packet, i
 	if (!garmin->logfile)
 		return;
 	fprintf(garmin->logfile, "%c { %3d, \"", direction, packet->id);
-	int i;
-	for (i = 0; i < packet->size; ++i) {
-		const char *format;
-		if (packet->data[i] == '"')
-			format = "\\\"";
-		else if (isprint(packet->data[i]))
-			format = "%c";
-		else
-			format = "\\%o";
-		fprintf(garmin->logfile, format, packet->data[i]);
-	}
+	print_string(garmin->logfile, (char *) packet->data, packet->size);
 	fprintf(garmin->logfile, "\" }\n");
 }
 
-void garmin_read_packet(garmin_t *garmin, garmin_packet_t *packet)
+int garmin_read_packet(garmin_t *garmin, garmin_packet_t *packet)
 {
 	memset(packet, 0, sizeof packet);
 	int c = garmin_getc(garmin);
-	if (c != DLE)
-		while (garmin_peekc(garmin) == DLE)
-			garmin_getc(garmin);
-	int checksum = packet->id = garmin_getc_dle(garmin);
-	checksum += packet->size = garmin_getc_dle(garmin);
+	if (c == EOF)
+		return EOF;
+	c = garmin_getc_dle(garmin);
+	if (c == EOF)
+		goto eof;
+	int checksum = packet->id = c;
+	c = garmin_getc_dle(garmin);
+	if (c == EOF)
+		goto eof;
+	checksum += packet->size = c;
 	int i;
-	for (i = 0; i < packet->size; ++i)
-		checksum += packet->data[i] = garmin_getc_dle(garmin);
+	for (i = 0; i < packet->size; ++i) {
+		c = garmin_getc_dle(garmin);
+		if (c == EOF)
+			goto eof;
+		checksum += packet->data[i] = c;
+	}
 	checksum = (~checksum + 1) & 0xff;
-	if (garmin_getc_dle(garmin) != checksum)
+	c = garmin_getc_dle(garmin);
+	if (c == EOF)
+		goto eof;
+	if (c != checksum)
 		error("%s: checksum failed", garmin->device);
-	if (garmin_getc(garmin) != DLE)
+	c = garmin_getc(garmin);
+	if (c == EOF)
+		goto eof;
+	if (c != DLE)
 		error("%s: expected DLE", garmin->device);
-	if (garmin_getc(garmin) != ETX)
+	c = garmin_getc(garmin);
+	if (c == EOF)
+		goto eof;
+	if (c != ETX)
 		error("%s: expected ETX", garmin->device);
 	garmin_log_packet(garmin, packet, '<');
+	return packet->id;
+eof:
+	error("%s: incomplete packet", garmin->device);
+	return EOF;
 }
 
 void garmin_write_packet(garmin_t *garmin, garmin_packet_t *packet)
@@ -383,21 +441,23 @@ void garmin_write_packet(garmin_t *garmin, garmin_packet_t *packet)
 		error("%s: short write", garmin->device);
 }
 
-void garmin_read_packet_ack(garmin_t *garmin, garmin_packet_t *packet)
+int garmin_read_packet_ack(garmin_t *garmin, garmin_packet_t *packet)
 {
-	garmin_read_packet(garmin, packet);
+	if (garmin_read_packet(garmin, packet) == EOF)
+		return EOF;
 	garmin_packet_t ack;
 	ack.id = Pid_Ack_Byte;
 	ack.size = 2;
 	*((uint16_t *) ack.data) = packet->id;
 	garmin_write_packet(garmin, &ack);
+	return packet->id;
 }
 
-void garmin_expect_packet_ack(garmin_t *garmin, garmin_packet_t *packet, int id)
+int garmin_expect_packet_ack(garmin_t *garmin, garmin_packet_t *packet, int id)
 {
-	garmin_read_packet_ack(garmin, packet);
-	if (packet->id != id)
+	if (garmin_read_packet_ack(garmin, packet) != id)
 		error("%s: unexpected packet", garmin->device);
+	return packet->id;
 }
 
 void garmin_write_packet_ack(garmin_t *garmin, garmin_packet_t *packet)
@@ -411,6 +471,15 @@ void garmin_write_packet_ack(garmin_t *garmin, garmin_packet_t *packet)
 		error("%s: ack packet too short", garmin->device);
 	else if ((ack.size == 1 && *(uint8_t *) ack.data != packet->id) || (ack.size == 2 && *(uint16_t *) ack.data != packet->id))
 		error("%s: ack to wrong packet!", garmin->device);
+}
+
+Protocol_Data_Type *garmin_grep_protocol(garmin_t *garmin, int tag, int data)
+{
+	int i;
+	for (i = 0; i < garmin->nprotocols; ++i)
+		if (garmin->protocols[i].tag == tag && garmin->protocols[i].data == data)
+			return garmin->protocols + i;
+	return 0;
 }
 
 garmin_t *garmin_new(const char *device, FILE *logfile)
@@ -439,101 +508,40 @@ garmin_t *garmin_new(const char *device, FILE *logfile)
 	garmin->product_data = alloc(packet.size + 1);
 	memcpy(garmin->product_data, packet.data, packet.size);
 	((char *) garmin->product_data)[packet.size] = 0;
-	/* FIXME enforce strict ordering */
-	while (garmin_select(garmin)) {
+	garmin_read_packet_ack(garmin, &packet);
+	if (packet.id == Pid_Ext_Product_Data) {
 		garmin_read_packet_ack(garmin, &packet);
-		switch (packet.id) {
-			case Pid_Ext_Product_Data:
-				break;
-			case Pid_Protocol_Array:
-				{
-					Protocol_Data_Type *protocol_data = (Protocol_Data_Type *) packet.data;
-					Protocol_Data_Type *protocol_data_end = protocol_data + packet.size / sizeof(Protocol_Data_Type);
-					while (protocol_data < protocol_data_end) {
-						switch (protocol_data->tag) {
-							case 'A':
-								switch (protocol_data->data) {
-									case 10:
-										++protocol_data;
-										garmin->A010 = 1;
-										break;
-									case 300:
-										++protocol_data;
-										/* FIXME check for overflow */
-										garmin->trk_data = *protocol_data++;
-										break;
-									case 301:
-									case 302:
-										++protocol_data;
-										/* FIXME check for overflow */
-										garmin->trk_hdr = *protocol_data++;
-										garmin->trk_data = *protocol_data++;
-										break;
-									default:
-										++protocol_data;
-										while (protocol_data < protocol_data_end && protocol_data->tag == 'D')
-											++protocol_data;
-										break;
-								}
-								break;
-							case 'L':
-								switch (protocol_data->data) {
-									case 1:
-										garmin->L001 = 1;
-										break;
-								}
-								++protocol_data;
-								break;
-							default:
-								++protocol_data;
-								break;
-						}
-					}
-				}
-				break;
-		}
+	} else if (packet.id != EOF) {
+		error("%s: unexpected packet %d", garmin->device, packet.id);
 	}
-	if (!garmin->trk_data.tag) {
-		static int supported_product_ids[] = { 13, 18, 22, 23, 24, 25, 29, 31, 35, 36, 39, 41, 42, 44, 45, 47, 48, 49, 50, 53, 55, 56, 59, 61, 62, 71, 72, 73, 74, 76, 77, 87, 88, 95, 96, 97, 100, 105, 106, 112 };
-		int *supported_product_id = supported_product_ids;
-		for (supported_product_id = supported_product_ids; *supported_product_id; ++supported_product_id) {
-			if (*supported_product_id == garmin->product_data->product_id) {
-				garmin->L001 = 1;
-				garmin->A010 = 1;
-				garmin->trk_data.tag = 'D';
-				garmin->trk_data.data = 300;
-				break;
-			}
-		}
+	if (packet.id == Pid_Protocol_Array) {
+		garmin->nprotocols = packet.size / sizeof(Protocol_Data_Type);
+		garmin->protocols = alloc(packet.size);
+		memcpy(garmin->protocols, packet.data, packet.size);
+		garmin_read_packet_ack(garmin, &packet);
+	} else if (packet.id != EOF) {
+		error("%s: unexpected packet %d", garmin->device, packet.id);
 	}
-	if (!garmin->L001)
+	if (!garmin_grep_protocol(garmin, Tag_Link_Prot_Id, 1))
 		error("%s: device does not support Link Protocol L001", garmin->device);
-	if (!garmin->A010)
+	if (!garmin_grep_protocol(garmin, Tag_Appl_Prot_Id, 10))
 		error("%s: device does not support Device Command Protocol A010", garmin->device);
-	if (!garmin->trk_data.tag)
-		error("%s: device does not support Track Log Transfer Protocols A300, A301, or A302", garmin->device);
-	switch (garmin->trk_data.data) {
-		case 300:
-		case 301:
-		case 302:
-		case 303:
-		case 304:
-			break;
-		default:
-			error("%s: unsupported Track Point Type %c%03d", garmin->device, garmin->trk_data.tag, garmin->trk_data.data);
-	}
-	if (garmin->trk_hdr.tag) {
-		switch (garmin->trk_hdr.data) {
-			case 310:
-			case 311:
-			case 312:
-				break;
-			default:
-				error("%s: unsupported Track Header Type %c%03d", garmin->device, garmin->trk_data.tag, garmin->trk_data.data);
-				break;
-		}
-	}
 	return garmin;
+}
+
+int garmin_has_barometric_altimeter(garmin_t *garmin)
+{
+	const char *p = garmin->product_data->product_description;
+	while (*p && !isdigit(*p))
+		++p;
+	while (*p && isdigit(*p))
+		++p;
+	while (*p && !isspace(*p)) {
+		if (*p == 'S' || *p == 's')
+			return 1;
+		++p;
+	}
+	return 0;
 }
 
 void garmin_delete(garmin_t *garmin)
@@ -542,6 +550,7 @@ void garmin_delete(garmin_t *garmin)
 		if (close(garmin->fd) == -1)
 			DIE("close", errno);
 		free(garmin->product_data);
+		free(garmin->protocols);
 		free(garmin);
 	}
 }
@@ -574,6 +583,8 @@ void garmin_turn_off_pwr(garmin_t *garmin)
 
 typedef struct {
 	garmin_t *garmin;
+	Protocol_Data_Type trk_hdr;
+	Protocol_Data_Type trk_data;
 	clock_t clock;
 	int remaining_sec;
 	int percentage;
@@ -604,7 +615,7 @@ static void garmin_transfer_trk_callback(void *data, int i, int records, const g
 			{
 				garmin_trk_point_t trk_point;
 				memset(&trk_point, 0, sizeof trk_point);
-				switch (transfer_trk_data->garmin->trk_data.data) {
+				switch (transfer_trk_data->trk_data.data) {
 					case 300:
 						{
 							D300_Trk_Point_Type *d300_trk_point = (D300_Trk_Point_Type *) packet->data;
@@ -672,6 +683,74 @@ void garmin_transfer_trk(garmin_t *garmin, void (*callback)(void *, const garmin
 	garmin_transfer_trk_data_t transfer_trk_data;
 	memset(&transfer_trk_data, 0, sizeof transfer_trk_data);
 	transfer_trk_data.garmin = garmin;
+	Protocol_Data_Type *protocol_data = garmin->protocols;
+	Protocol_Data_Type *protocol_data_end = protocol_data + garmin->nprotocols;
+	while (protocol_data < protocol_data_end) {
+		switch (protocol_data->tag) {
+			case Tag_Appl_Prot_Id:
+				switch (protocol_data->data) {
+					case 300:
+						++protocol_data;
+						if (protocol_data == protocol_data_end)
+							goto _error;
+						transfer_trk_data.trk_data = *protocol_data++;
+						break;
+					case 301: case 302:
+						++protocol_data;
+						if (protocol_data == protocol_data_end)
+							goto _error;
+						transfer_trk_data.trk_hdr = *protocol_data++;
+						if (protocol_data == protocol_data_end)
+							goto _error;
+						transfer_trk_data.trk_data = *protocol_data++;
+						break;
+					default:
+						++protocol_data;
+						break;
+				}
+				break;
+			default:
+				++protocol_data;
+				break;
+		}
+	}
+	if (!transfer_trk_data.trk_data.tag) {
+		static const int supported_product_ids[] = { 13, 18, 22, 23, 24, 25, 29, 31, 35, 36, 39, 41, 42, 44, 45, 47, 48, 49, 50, 53, 55, 56, 59, 61, 62, 71, 72, 73, 74, 76, 77, 87, 88, 95, 96, 97, 100, 105, 106, 112 };
+		unsigned i;
+		for (i = 0; i < sizeof supported_product_ids / sizeof supported_product_ids[0]; ++i) {
+			if (garmin->product_data->product_id == supported_product_ids[i]) {
+				transfer_trk_data.trk_data.tag = Tag_Data_Prot_Id;
+				transfer_trk_data.trk_data.data = 300;
+				break;
+			}
+		}
+	}
+	if (!transfer_trk_data.trk_data.tag)
+		goto _error;
+	if (transfer_trk_data.trk_data.tag != Tag_Data_Prot_Id)
+		goto _error;
+	switch (transfer_trk_data.trk_data.data) {
+		case 300:
+		case 301:
+		case 302:
+		case 303:
+		case 304:
+			break;
+		default:
+			goto _error;
+	}
+	if (transfer_trk_data.trk_hdr.tag) {
+		if (transfer_trk_data.trk_hdr.tag != Tag_Data_Prot_Id)
+			goto _error;
+		switch (transfer_trk_data.trk_hdr.data) {
+			case 310:
+			case 311:
+			case 312:
+				break;
+			default:
+				goto _error;
+		}
+	}
 	if (!quiet) {
 		struct tms tms;
 		transfer_trk_data.clock = times(&tms);
@@ -686,6 +765,9 @@ void garmin_transfer_trk(garmin_t *garmin, void (*callback)(void *, const garmin
 	garmin_each(garmin, Cmnd_Transfer_Trk, garmin_transfer_trk_callback, &transfer_trk_data);
 	if (!quiet)
 		fprintf(stderr, "100%%            \n");
+	return;
+_error:
+	error("%s: unsupported track transfer protocol", garmin->device);
 }
 
 typedef struct {
@@ -791,7 +873,7 @@ void garmini_write_igc(FILE *file, garmin_t *garmin, const garmin_trk_point_t *b
 		int int_alt = trk_point->alt <= 0.0 ? 0 : trk_point->alt + 0.5;
 		int pressure_alt;
 		int gnss_alt;
-		if (sensors) {
+		if (barometric_altimeter) {
 			pressure_alt = int_alt;
 			gnss_alt = 0;
 		} else {
@@ -807,7 +889,17 @@ void garmini_id(garmin_t *garmin)
 	printf("--- \n");
 	printf("product_id: %d\n", garmin->product_data->product_id);
 	printf("software_version: %d.%02d\n", garmin->product_data->software_version / 100, garmin->product_data->software_version % 100);
-	printf("product_description: \"%s\"\n", garmin->product_data->product_description);
+	printf("product_description: \"");
+	print_string(stdout, garmin->product_data->product_description, -1);
+	printf("\"\n");
+	printf("protocols: \"");
+	if (garmin->nprotocols) {
+		printf("%c%03d", garmin->protocols[0].tag, garmin->protocols[0].data);
+		int i;
+		for (i = 1; i < garmin->nprotocols; ++i)
+			printf(",%c%03d", garmin->protocols[i].tag, garmin->protocols[i].data);
+	}
+	printf("\"\n");
 }
 
 void garmini_igc(garmin_t *garmin)
@@ -856,10 +948,11 @@ static void usage(void)
 			"Usage: %s [options] [command]\n"
 			"Options:\n"
 			"\t-h, --help\t\t\tshow some help\n"
+			"\t-q, --quiet\t\t\tsuppress output\n"
 			"\t-d, --device=DEVICE\t\tselect device (default is /dev/ttyS0)\n"
 			"\t-D, --directory=DIR\t\tdownload tracklogs to DIR\n"
 			"\t-l, --log=FILENAME\t\tlog communication to FILENAME\n"
-			"\t-o, --power-off\t\t\tturn GPS off\n"
+			"\t-o, --power-off\t\t\tpower off GPS\n"
 			"IGC options:\n"
 			"\t-m, --manufacturer=STRING\toverride manufacturer\n"
 			"\t-n, --serial-number=NUMBER\toverride serial number\n"
@@ -868,12 +961,13 @@ static void usage(void)
 			"\t-g, --glider-id=ID\t\tset glider id\n"
 			"\t-c, --competition-class=CLASS\tset competition class\n"
 			"\t-i, --competition-id=ID\t\tset competition id\n"
-			"\t-s, --sensors\t\t\tFIXME\n"
+			"\t-b, --barometric-altimeter=0|1\tset whether GPS has a barometric altimeter\n"
 			"Commands:\n"
 			"\tid\t\tidentify GPS\n"
 			"\tdo, download\tdownload tracklogs\n"
 			"\tig, igc\t\twrite entire track log to stdout\n"
 			"Supported GPSs:\n"
+			"\tAll modern Garmin GPSs and the following older models:\n"
 			"\tGPS 12, GPS 12 XL, GPS 12 XL Chinese, GPS 12 XL Japanese, GPS 120,\n"
 			"\tGPS 120 Chinese, GPS 120 XL, GPS 125 Sounder, GPS 126, GPS 126 Chinese,\n"
 			"\tGPS 128, GPS 128 Chinese, GPS 38, GPS 38 Chinese, GPS 38 Japanese,\n"
@@ -883,7 +977,7 @@ static void usage(void)
 			"\tGPS III Pilot, GPSCOM 170, GPSCOM 190, GPSMAP 130, GPSMAP 130 Chinese,\n"
 			"\tGPSMAP 135 Sounder, GPSMAP 175, GPSMAP 195, GPSMAP 205, GPSMAP 210,\n"
 			"\tGPSMAP 215, GPSMAP 220, GPSMAP 225, GPSMAP 230, GPSMAP 230 Chinese,\n"
-			"\tGPSMAP 235 Sounder and all modern Garmin GPSs\n",
+			"\tGPSMAP 235\n",
 		program_name, program_name);
 }
 
@@ -902,23 +996,23 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while (1) {
 		static struct option options[] = {
-			{ "help",              no_argument,       0, 'h' },
-			{ "device",            required_argument, 0, 'd' },
-			{ "directory",         required_argument, 0, 'D' },
-			{ "sensors",           no_argument,       0, 's' },
-			{ "log",               required_argument, 0, 'l' },
-			{ "power-off",         no_argument,       0, 'o' },
-			{ "manufacturer",      required_argument, 0, 'm' },
-			{ "serial-number",     required_argument, 0, 's' },
-			{ "pilot",             required_argument, 0, 'p' },
-			{ "glider-type",       required_argument, 0, 't' },
-			{ "glider-id",         required_argument, 0, 'g' },
-			{ "competition-class", required_argument, 0, 'c' },
-			{ "competition-id",    required_argument, 0, 'i' },
-			{ "quiet",             no_argument,       0, 'q' },
-			{ 0,                   0,                 0, 0 },
+			{ "help",                 no_argument,       0, 'h' },
+			{ "quiet",                no_argument,       0, 'q' },
+			{ "device",               required_argument, 0, 'd' },
+			{ "directory",            required_argument, 0, 'D' },
+			{ "log",                  required_argument, 0, 'l' },
+			{ "power-off",            no_argument,       0, 'o' },
+			{ "manufacturer",         required_argument, 0, 'm' },
+			{ "serial-number",        required_argument, 0, 's' },
+			{ "pilot",                required_argument, 0, 'p' },
+			{ "glider-type",          required_argument, 0, 't' },
+			{ "glider-id",            required_argument, 0, 'g' },
+			{ "competition-class",    required_argument, 0, 'c' },
+			{ "competition-id",       required_argument, 0, 'i' },
+			{ "barometric-altimeter", required_argument, 0, 'b' },
+			{ 0,                      0,                 0, 0 },
 		};
-		int c = getopt_long(argc, argv, ":D:c:d:g:hi:l:m:n:op:st:", options, 0);
+		int c = getopt_long(argc, argv, ":hqd:D:l:om:s:p:t:g:c:i:b:", options, 0);
 		if (c == -1)
 			break;
 		char *endptr;
@@ -968,7 +1062,9 @@ int main(int argc, char *argv[])
 				quiet = 1;
 				break;
 			case 's':
-				sensors = 1;
+				barometric_altimeter = strtol(optarg, &endptr, 10);
+				if (endptr == optarg || *endptr != '\0' || barometric_altimeter < 0 || 1 < barometric_altimeter)
+					error("invalid argument '%s'", optarg);
 				break;
 			case 't':
 				glider_type = optarg;
@@ -981,11 +1077,15 @@ int main(int argc, char *argv[])
 	}
 
 	garmin_t *garmin = garmin_new(device, logfile);
+
+	if (barometric_altimeter == -1)
+		barometric_altimeter = garmin_has_barometric_altimeter(garmin);
+
 	if (optind == argc || strcmp(argv[optind], "do") == 0 || strcmp(argv[optind], "download") == 0) {
 		garmini_download(garmin);
 	} else {
 		if (optind + 1 != argc)
-			error("excess argument%s on command line", argc - optind == 1 ? "" : "s");
+			error("excess arguments on command line");
 		if (strcmp(argv[optind], "id") == 0) {
 			garmini_id(garmin);
 		} else if (strcmp(argv[optind], "ig") == 0 || strcmp(argv[optind], "igc") == 0) {
