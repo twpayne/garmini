@@ -6,7 +6,7 @@ CC=gcc
 CFLAGS=-g -Wall -Wextra
 INSTALL=install
 
-SRCS=garmini.c
+SRCS=garmini.c garmin.c
 OBJS=$(SRCS:%.c=%.o)
 BINS=garmini
 
