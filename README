@@ -1,3 +1,56 @@
-eTrex Euro Software Version 2.03
-Geko 301 Software Version 2.70
-GPSMap76CSX Software Version 3.30
+garmini - download tracklogs from Garmin GPSs
+Copyright (C) 2007 Tom Payne
+
+
+
+INTRODUCTION
+
+garmini is a command-line program for downloading tracklogs from Garmin GPSs.
+Its goal is to be simple, functional and portable with no external
+dependencies.
+
+
+QUICK START
+
+Type "make" to build the software and "make install" (as root) to install it.
+
+To download all the tracks from your GPS into the current directory, run:
+	$ garmini
+If this doesn't work then check the "TROUBLESHOOTING" section below.
+
+By default, garmini assumes that your GPS is attached to /dev/ttyS0.  You can
+specify a different device using the -d option, for example:
+	$ garmini -d /dev/ttyUSB0
+Garmini GPSs often appear as /dev/ttyUSB0.  To avoid typing this every time
+you can set the GARMINI_DEVICE environment variable to point to the device.
+For example (in bash):
+	$ export GARMINI_DEVICE=/dev/ttyUSB0
+
+For a full list of available commands and options, run:
+	$ garmini -h
+
+
+AUTHOR
+
+Tom Payne <twpayne@gmail.com>
+
+
+
+LICENSE
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+
+# vim: set spell spelllang=en textwidth=78:

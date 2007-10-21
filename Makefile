@@ -2,13 +2,13 @@ PREFIX=/usr/local
 DEVICE=/dev/ttyS0
 
 CC=gcc
-#CFLAGS=-O2 -Wall -Wextra
-CFLAGS=-g -Wall -Wextra
+CFLAGS=-O2 -Wall -Wextra
 INSTALL=install
 
 SRCS=garmini.c garmin.c
 OBJS=$(SRCS:%.c=%.o)
 BINS=garmini
+LIBS=-lm
 
 .PHONY: all clean setgidinstall install tarball
 
@@ -42,4 +42,4 @@ clean:
 
 %: %.o
 	@echo "  LD      $<"
-	@$(CC) -o $@ $(CFLAGS) $^
+	@$(CC) -o $@ $(CFLAGS) $^ $(LIBS)
