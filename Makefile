@@ -3,7 +3,6 @@ DEVICE=/dev/ttyS0
 
 CC=gcc
 CFLAGS=-O2 -Wall -Wextra -DDEVICE=\"$(DEVICE)\"
-INSTALL=install
 
 SRCS=garmini.c garmin.c
 OBJS=$(SRCS:%.c=%.o)
@@ -28,7 +27,8 @@ setgidinstall: install
 
 install: $(BINS)
 	@echo "  INSTALL garmini"
-	@$(INSTALL) -D -m 755 garmini $(PREFIX)/bin/garmini
+	@mkdir -p $(PREFIX)/bin
+	@cp garmini $(PREFIX)/bin
 
 garmini: $(OBJS)
 
