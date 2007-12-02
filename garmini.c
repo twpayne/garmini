@@ -36,6 +36,10 @@
 
 #include "garmin.h"
 
+#ifndef DEVICE
+#define DEVICE "/dev/ttyS0"
+#endif
+
 const char *program_name = 0;
 int _sc_clk_tck = -1;
 const char *device = 0;
@@ -364,7 +368,7 @@ static void usage(void)
 			"Options:\n"
 			"\t-h, --help\t\t\tshow some help\n"
 			"\t-q, --quiet\t\t\tsuppress output\n"
-			"\t-d, --device=DEVICE\t\tselect device (default is /dev/ttyS0)\n"
+			"\t-d, --device=DEVICE\t\tselect device (default is %s)\n"
 			"\t-D, --directory=DIR\t\tdownload tracklogs to DIR\n"
 			"\t-l, --log=FILENAME\t\tlog communication to FILENAME\n"
 			"\t-o, --power-off\t\t\tpower off GPS\n"
@@ -381,7 +385,7 @@ static void usage(void)
 			"\tid\t\tidentify GPS\n"
 			"\tdo, download\tdownload tracklogs\n"
 			"\tig, igc\t\twrite entire track log to stdout\n",
-		program_name, program_name);
+		program_name, program_name, DEVICE);
 }
 
 int main(int argc, char *argv[])
@@ -391,7 +395,7 @@ int main(int argc, char *argv[])
 
 	device = getenv("GARMINI_DEVICE");
 	if (!device)
-		device = "/dev/ttyS0";
+		device = DEVICE;
 
 	setenv("TZ", "UTC", 1);
 	tzset();

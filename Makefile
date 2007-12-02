@@ -2,7 +2,7 @@ PREFIX=/usr/local
 DEVICE=/dev/ttyS0
 
 CC=gcc
-CFLAGS=-O2 -Wall -Wextra
+CFLAGS=-O2 -Wall -Wextra -DDEVICE=\"$(DEVICE)\"
 INSTALL=install
 
 SRCS=garmini.c garmin.c
