@@ -380,7 +380,7 @@ static void usage(void)
 			"\t-g, --glider-id=ID\t\tset glider id\n"
 			"\t-c, --competition-class=CLASS\tset competition class\n"
 			"\t-i, --competition-id=ID\t\tset competition id\n"
-			"\t-b, --barometric-altimeter=0|1\tset whether GPS has a barometric altimeter\n"
+			"\t-b, --barometric-altimeter=0|1\tset barometric altimeter\n"
 			"Commands:\n"
 			"\tid\t\tidentify GPS\n"
 			"\tdo, download\tdownload tracklogs\n"
