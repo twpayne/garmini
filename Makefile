@@ -2,7 +2,7 @@ PREFIX=/usr/local
 DEVICE=/dev/ttyS0
 
 CC=gcc
-CFLAGS=-O2 -Wall -Wextra -DDEVICE=\"$(DEVICE)\"
+CFLAGS=-O2 -Wall -DDEVICE=\"$(DEVICE)\"
 
 SRCS=garmini.c garmin.c
 OBJS=$(SRCS:%.c=%.o)
