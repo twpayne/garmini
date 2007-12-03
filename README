@@ -5,9 +5,8 @@ Copyright (C) 2007 Tom Payne
 
 INTRODUCTION
 
-garmini is a command-line program for downloading tracklogs from Garmin GPSs.
-Its goal is to be simple, functional and portable with no external
-dependencies.
+garmini is a simple program for downloading tracklogs from Garmin GPSs.  Its
+goal is to be simple, functional and portable with no external dependencies.
 
 
 QUICK START
