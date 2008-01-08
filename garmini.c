@@ -180,7 +180,7 @@ static void garmini_transfer_trk_callback(void *data, const garmin_trk_point_t *
 			remaining_sec = 1;
 		int percentage = 100 * i / records;
 		if (remaining_sec != transfer_trk_data->remaining_sec || percentage != transfer_trk_data->percentage) {
-			fprintf(stderr, "%3d%% (ETA %2d:%02d)\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", 100 * i / records, remaining_sec / 60, remaining_sec % 60);
+			fprintf(stderr, "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%3d%%  %02d:%02d ETA", 100 * i / records, remaining_sec / 60, remaining_sec % 60);
 			transfer_trk_data->remaining_sec = remaining_sec;
 			transfer_trk_data->percentage = percentage;
 		}
@@ -205,11 +205,15 @@ garmini_track_t *garmini_transfer_trk(garmin_t *garmin)
 			DIE("times", errno);
 		transfer_trk_data.remaining_sec = -1;
 		transfer_trk_data.percentage = -1;
-		fprintf(stderr, "%s: downloading track log: ", program_name);
+		fprintf(stderr, "%s: downloading track log:   0%%  00:00 ETA", program_name);
 	}
 	garmin_transfer_trk(garmin, garmini_transfer_trk_callback, &transfer_trk_data);
-	if (!quiet)
-		fprintf(stderr, "100%%            \n");
+	if (!quiet) {
+		struct tms tms;
+		clock_t clock = times(&tms);
+		int total_sec = (clock - transfer_trk_data.clock) / _sc_clk_tck;
+		fprintf(stderr, "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b100%%  %02d:%02d    \n", total_sec / 60, total_sec % 60);
+	}
 	return transfer_trk_data.track;
 }
 
