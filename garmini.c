@@ -222,7 +222,7 @@ void garmini_write_igc(FILE *file, garmin_t *garmin, const garmin_trk_point_t *b
 	fprintf(file, "A%s%03d\r\n", manufacturer, serial_number);
 	time_t time = (begin == end ? 0 : begin->time) + GARMIN_TIME_OFFSET;
 	struct tm *tm = gmtime(&time);
-	fprintf(file, "HFDTE%02d%02d%02d\n", tm->tm_mday, tm->tm_mon + 1, (tm->tm_year + 1900) % 100);
+	fprintf(file, "HFDTE%02d%02d%02d\r\n", tm->tm_mday, tm->tm_mon + 1, (tm->tm_year + 1900) % 100);
 	struct tm last_tm = *tm;
 	fprintf(file, "HFFXA100\r\n");
 	if (pilot)
@@ -245,7 +245,7 @@ void garmini_write_igc(FILE *file, garmin_t *garmin, const garmin_trk_point_t *b
 		time = trk_point->time + GARMIN_TIME_OFFSET;
 		struct tm *tm = gmtime(&time);
 		if (tm->tm_year != last_tm.tm_year || tm->tm_mon != last_tm.tm_mon || tm->tm_mday != last_tm.tm_mday) {
-			fprintf(file, "HFDTE%02d%02d%02d\n", tm->tm_mday, tm->tm_mon + 1, (tm->tm_year + 1900) % 100);
+			fprintf(file, "HFDTE%02d%02d%02d\r\n", tm->tm_mday, tm->tm_mon + 1, (tm->tm_year + 1900) % 100);
 			last_tm = *tm;
 		}
 		double lat = fabs(180.0 * trk_point->posn.lat / 2147483648.0) + 0.5 / 60000.0;
