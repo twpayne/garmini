@@ -282,8 +282,9 @@ int garmin_read_packet_ack(garmin_t *garmin, garmin_packet_t *packet)
 
 int garmin_expect_packet_ack(garmin_t *garmin, garmin_packet_t *packet, int id)
 {
-	if (garmin_read_packet_ack(garmin, packet) != id)
-		error("%s: unexpected packet", garmin->device);
+	int recv_id = garmin_read_packet_ack(garmin, packet);
+    if (recv_id != id)
+		error("%s: unexpected packet %d", garmin->device, recv_id);
 	return packet->id;
 }
 
