@@ -4,7 +4,7 @@ DEVICE=/dev/ttyS0
 CC=gcc
 CFLAGS=-O2 -Wall -DDEVICE=\"$(DEVICE)\"
 
-SRCS=garmini.c garmin.c
+SRCS=garmini.c garmin.c garmini.h garmin.h
 OBJS=$(SRCS:%.c=%.o)
 BINS=garmini
 LIBS=-lm
