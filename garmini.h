@@ -28,6 +28,7 @@
 extern const char *program_name;
 
 void error(const char *, ...);
+void warning(const char *, ...);
 void die(const char *, int, const char *, const char *, int);
 void *alloc(int);
 void print_string(FILE *, const char *, ...);

@@ -67,6 +67,16 @@ void error(const char *message, ...)
 	exit(EXIT_FAILURE);
 }
 
+void warning(const char *message, ...)
+{
+	fprintf(stderr, "%s: ", program_name);
+	va_list ap;
+	va_start(ap, message);
+	vfprintf(stderr, message, ap);
+	va_end(ap);
+	fprintf(stderr, "\n");
+}
+
 void die(const char *file, int line, const char *function, const char *message, int _errno)
 {
 	if (_errno)
