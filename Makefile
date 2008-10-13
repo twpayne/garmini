@@ -4,7 +4,8 @@ DEVICE=/dev/ttyS0
 CC=gcc
 CFLAGS=-O2 -Wall -DDEVICE=\"$(DEVICE)\"
 
-SRCS=garmini.c garmin.c garmini.h garmin.h
+SRCS=garmini.c garmin.c
+HEADERS=garmini.h garmin.h
 OBJS=$(SRCS:%.c=%.o)
 BINS=garmini
 LIBS=-lm
@@ -15,7 +16,7 @@ all: $(BINS)
 
 tarball:
 	mkdir garmini-$(VERSION)
-	cp Makefile $(SRCS) garmini-$(VERSION)
+	cp Makefile $(SRCS) $(HEADERS) garmini-$(VERSION)
 	tar -czf garmini-$(VERSION).tar.gz garmini-$(VERSION)
 	rm -Rf garmini-$(VERSION)
 
